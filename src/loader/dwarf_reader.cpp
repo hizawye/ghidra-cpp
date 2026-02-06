@@ -12,12 +12,18 @@ constexpr uint32_t kDwarfTagPointerType = 0x0f;
 constexpr uint32_t kDwarfTagStructureType = 0x13;
 constexpr uint32_t kDwarfTagArrayType = 0x01;
 constexpr uint32_t kDwarfTagTypedef = 0x16;
+constexpr uint32_t kDwarfTagUnionType = 0x17;
+constexpr uint32_t kDwarfTagConstType = 0x26;
+constexpr uint32_t kDwarfTagVolatileType = 0x35;
+constexpr uint32_t kDwarfTagEnumerationType = 0x04;
+constexpr uint32_t kDwarfTagSubroutineType = 0x15;
 
 constexpr uint32_t kDwarfAtName = 0x03;
 constexpr uint32_t kDwarfAtLowPc = 0x11;
 constexpr uint32_t kDwarfAtHighPc = 0x12;
 constexpr uint32_t kDwarfAtByteSize = 0x0b;
 constexpr uint32_t kDwarfAtStmtList = 0x10;
+constexpr uint32_t kDwarfAtType = 0x49;
 
 constexpr uint32_t kDwarfFormAddr = 0x01;
 constexpr uint32_t kDwarfFormData1 = 0x0b;
@@ -30,6 +36,18 @@ constexpr uint32_t kDwarfFormString = 0x08;
 constexpr uint32_t kDwarfFormStrp = 0x0e;
 constexpr uint32_t kDwarfFormSecOffset = 0x17;
 constexpr uint32_t kDwarfFormFlag = 0x0c;
+constexpr uint32_t kDwarfFormRef1 = 0x11;
+constexpr uint32_t kDwarfFormRef2 = 0x12;
+constexpr uint32_t kDwarfFormRef4 = 0x13;
+constexpr uint32_t kDwarfFormRef8 = 0x14;
+constexpr uint32_t kDwarfFormRefUdata = 0x15;
+constexpr uint32_t kDwarfFormRefAddr = 0x10;
+constexpr uint32_t kDwarfFormFlagPresent = 0x19;
+constexpr uint32_t kDwarfFormExprloc = 0x18;
+constexpr uint32_t kDwarfFormBlock1 = 0x0a;
+constexpr uint32_t kDwarfFormBlock2 = 0x03;
+constexpr uint32_t kDwarfFormBlock4 = 0x04;
+constexpr uint32_t kDwarfFormBlock = 0x09;
 
 constexpr uint8_t kLineOpCopy = 1;
 constexpr uint8_t kLineOpAdvancePc = 2;
@@ -49,6 +67,10 @@ std::string join_path(const std::string& dir, const std::string& file) {
     return file;
   }
   return dir + "/" + file;
+}
+
+bool is_high_pc_offset_form(uint32_t form) {
+  return form != kDwarfFormAddr;
 }
 
 } // namespace
@@ -206,6 +228,7 @@ bool DwarfReader::parse_unit(Cursor& cursor, ghirda::core::DebugInfo* out, std::
   if (!cursor.read_u32(&unit_length)) {
     return false;
   }
+  uint64_t unit_start = cursor.offset - 4;
   if (unit_length == 0) {
     return true;
   }
@@ -243,8 +266,7 @@ bool DwarfReader::parse_unit(Cursor& cursor, ghirda::core::DebugInfo* out, std::
     return false;
   }
 
-  uint64_t unit_offset = cursor.offset;
-  if (!parse_die_tree(cursor, abbrev, address_size, unit_offset, out, error)) {
+  if (!parse_die_tree(cursor, abbrev, address_size, unit_start, out, error)) {
     return false;
   }
 
@@ -435,6 +457,115 @@ bool DwarfReader::read_form(Cursor& cursor, uint32_t form, uint8_t address_size,
       }
       return true;
     }
+    case kDwarfFormFlagPresent: {
+      if (uvalue) {
+        *uvalue = 1;
+      }
+      return true;
+    }
+    case kDwarfFormRef1: {
+      uint8_t value = 0;
+      if (!cursor.read_u8(&value)) {
+        return false;
+      }
+      if (uvalue) {
+        *uvalue = unit_offset + value;
+      }
+      return true;
+    }
+    case kDwarfFormRef2: {
+      uint16_t value = 0;
+      if (!cursor.read_u16(&value)) {
+        return false;
+      }
+      if (uvalue) {
+        *uvalue = unit_offset + value;
+      }
+      return true;
+    }
+    case kDwarfFormRef4: {
+      uint32_t value = 0;
+      if (!cursor.read_u32(&value)) {
+        return false;
+      }
+      if (uvalue) {
+        *uvalue = unit_offset + value;
+      }
+      return true;
+    }
+    case kDwarfFormRef8: {
+      uint64_t value = 0;
+      if (!cursor.read_u64(&value)) {
+        return false;
+      }
+      if (uvalue) {
+        *uvalue = unit_offset + value;
+      }
+      return true;
+    }
+    case kDwarfFormRefUdata: {
+      uint64_t value = 0;
+      if (!cursor.read_uleb(&value)) {
+        return false;
+      }
+      if (uvalue) {
+        *uvalue = unit_offset + value;
+      }
+      return true;
+    }
+    case kDwarfFormRefAddr: {
+      uint64_t value = 0;
+      if (address_size == 8) {
+        if (!cursor.read_u64(&value)) {
+          return false;
+        }
+      } else {
+        uint32_t value32 = 0;
+        if (!cursor.read_u32(&value32)) {
+          return false;
+        }
+        value = value32;
+      }
+      if (uvalue) {
+        *uvalue = value;
+      }
+      return true;
+    }
+    case kDwarfFormExprloc: {
+      uint64_t length = 0;
+      if (!cursor.read_uleb(&length)) {
+        return false;
+      }
+      return cursor.skip(static_cast<size_t>(length));
+    }
+    case kDwarfFormBlock1: {
+      uint8_t length = 0;
+      if (!cursor.read_u8(&length)) {
+        return false;
+      }
+      return cursor.skip(length);
+    }
+    case kDwarfFormBlock2: {
+      uint16_t length = 0;
+      if (!cursor.read_u16(&length)) {
+        return false;
+      }
+      return cursor.skip(length);
+    }
+    case kDwarfFormBlock4: {
+      uint32_t length = 0;
+      if (!cursor.read_u32(&length)) {
+        return false;
+      }
+      return cursor.skip(length);
+    }
+    case kDwarfFormBlock: {
+      uint64_t length = 0;
+      if (!cursor.read_uleb(&length)) {
+        return false;
+      }
+      return cursor.skip(static_cast<size_t>(length));
+    }
     default:
       return false;
   }
@@ -467,11 +598,14 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
     }
 
     const AbbrevEntry& entry = it->second;
+    uint64_t die_offset = cursor.offset;
     uint64_t low_pc = 0;
     uint64_t high_pc = 0;
     uint64_t stmt_list = 0;
     uint64_t byte_size = 0;
+    uint64_t type_ref = 0;
     std::string name;
+    uint32_t high_pc_form = 0;
 
     for (const auto& attr : entry.attributes) {
       uint64_t uvalue = 0;
@@ -490,6 +624,7 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
           break;
         case kDwarfAtHighPc:
           high_pc = uvalue;
+          high_pc_form = attr.form;
           break;
         case kDwarfAtStmtList:
           stmt_list = uvalue;
@@ -497,9 +632,16 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
         case kDwarfAtByteSize:
           byte_size = uvalue;
           break;
+        case kDwarfAtType:
+          type_ref = uvalue;
+          break;
         default:
           break;
       }
+    }
+
+    if (high_pc != 0 && low_pc != 0 && is_high_pc_offset_form(high_pc_form)) {
+      high_pc = low_pc + high_pc;
     }
 
     if (entry.tag == kDwarfTagCompileUnit && stmt_list != 0) {
@@ -511,15 +653,20 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
       func.name = name;
       func.low_pc = low_pc;
       func.high_pc = high_pc;
+      func.return_type_ref = type_ref;
       out->functions.push_back(func);
     }
 
     if (entry.tag == kDwarfTagBaseType || entry.tag == kDwarfTagPointerType ||
         entry.tag == kDwarfTagStructureType || entry.tag == kDwarfTagArrayType ||
-        entry.tag == kDwarfTagTypedef) {
+        entry.tag == kDwarfTagTypedef || entry.tag == kDwarfTagUnionType ||
+        entry.tag == kDwarfTagConstType || entry.tag == kDwarfTagVolatileType ||
+        entry.tag == kDwarfTagEnumerationType || entry.tag == kDwarfTagSubroutineType) {
       ghirda::core::DebugType type{};
       type.name = name;
       type.size = static_cast<uint32_t>(byte_size);
+      type.type_ref = type_ref;
+      type.die_offset = die_offset;
       switch (entry.tag) {
         case kDwarfTagBaseType:
           type.kind = ghirda::core::DebugTypeKind::Base;
@@ -535,6 +682,21 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
           break;
         case kDwarfTagTypedef:
           type.kind = ghirda::core::DebugTypeKind::Typedef;
+          break;
+        case kDwarfTagUnionType:
+          type.kind = ghirda::core::DebugTypeKind::Union;
+          break;
+        case kDwarfTagConstType:
+          type.kind = ghirda::core::DebugTypeKind::Const;
+          break;
+        case kDwarfTagVolatileType:
+          type.kind = ghirda::core::DebugTypeKind::Volatile;
+          break;
+        case kDwarfTagEnumerationType:
+          type.kind = ghirda::core::DebugTypeKind::Enumeration;
+          break;
+        case kDwarfTagSubroutineType:
+          type.kind = ghirda::core::DebugTypeKind::Subroutine;
           break;
         default:
           type.kind = ghirda::core::DebugTypeKind::Unknown;

@@ -10,3 +10,5 @@
 - Added memory image and ELF64 x86_64 relocation parsing + application in loader.
 ## 2026-02-06
 - Added DebugInfo structure and minimal DWARF v4+ parsing for types, functions, and line info.
+## 2026-02-06
+- Expanded DWARF v4+ parsing with additional tags/forms and basic type references.
