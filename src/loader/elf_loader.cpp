@@ -708,8 +708,10 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
           break;
         }
         case ghirda::core::DebugTypeKind::Struct:
-        case ghirda::core::DebugTypeKind::Union:
           type_def.kind = ghirda::core::TypeKind::Struct;
+          break;
+        case ghirda::core::DebugTypeKind::Union:
+          type_def.kind = ghirda::core::TypeKind::Union;
           break;
         case ghirda::core::DebugTypeKind::Array:
           type_def.kind = ghirda::core::TypeKind::Array;
@@ -737,6 +739,19 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
       if (name.empty()) { continue; }
       type_def.name = name;
       type_def.size = size;
+      if ((dt.kind == ghirda::core::DebugTypeKind::Struct ||
+           dt.kind == ghirda::core::DebugTypeKind::Union) &&
+          !dt.members.empty()) {
+        for (const auto& member : dt.members) {
+          ghirda::core::TypeMember tm{};
+          tm.name = member.name;
+          auto resolved = resolve_type(type_map.count(member.type_ref) ? type_map[member.type_ref] : nullptr);
+          tm.type_name = resolved.first.empty() ? "void" : resolved.first;
+          tm.size = resolved.second;
+          tm.offset = static_cast<uint32_t>(member.offset);
+          type_def.members.push_back(tm);
+        }
+      }
       program->types().add_type(type_def);
       emitted.insert(dt.die_offset);
     }

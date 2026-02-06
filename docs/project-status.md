@@ -10,12 +10,13 @@
 - Added DWARF v4+ parsing for types, functions, and line info (basic forms).
 - Expanded DWARF parsing with more tags/forms (ref, block, const/volatile/enum types).
 - Added recursive DWARF type resolution and mapped debug types into Program type system.
+- Added struct/union members to Program type system from DWARF.
 - Added placeholder SLEIGH decoder and wired to headless CLI.
 
 ## Blockers/Bugs
-- DWARF parser is still partial and does not model full type layouts.
+- DWARF parser is still partial and does not model full layouts (bitfields, alignments).
 - Decoder emits placeholder p-code only.
 - No real decompiler logic yet.
 
 ## Next Immediate Starting Point
-- Parse struct/union members into concrete type layouts in Program type system.
+- Improve struct/union member parsing (bitfields, alignment) and link to decompiler.

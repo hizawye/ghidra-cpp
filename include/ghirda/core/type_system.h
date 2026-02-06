@@ -12,13 +12,22 @@ enum class TypeKind {
   Float,
   Pointer,
   Struct,
-  Array
+  Array,
+  Union
+};
+
+struct TypeMember {
+  std::string name;
+  std::string type_name;
+  uint32_t offset = 0;
+  uint32_t size = 0;
 };
 
 struct Type {
   TypeKind kind = TypeKind::Void;
   std::string name;
   uint32_t size = 0;
+  std::vector<TypeMember> members;
 };
 
 class TypeSystem {

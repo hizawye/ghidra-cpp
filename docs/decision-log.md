@@ -16,3 +16,5 @@
 - Added basic DWARF type reference resolution and mapped debug types into Program type system.
 ## 2026-02-06
 - Added recursive DWARF type resolution for pointers/arrays/typedef/const/volatile.
+## 2026-02-06
+- Added struct/union member support in Program type system and DWARF mapping.
