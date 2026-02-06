@@ -24,3 +24,5 @@
 - Added section/segment tables to Program and populated them in ELF loader.
 ## 2026-02-06
 - Implemented PE loader with sections, imports/exports, base relocations, and PDB path extraction.
+## 2026-02-06
+- Implemented Mach-O loader with segments/sections, symbols, and basic relocations.
