@@ -9,6 +9,7 @@
 
 #include "ghirda/core/address_space.h"
 #include "ghirda/core/memory_map.h"
+#include "ghirda/core/relocation.h"
 #include "ghirda/core/symbol.h"
 #include "ghirda/core/type_system.h"
 
@@ -23,12 +24,22 @@ constexpr uint32_t kElfTypeShared = 3;
 constexpr uint32_t kElfPtLoad = 1;
 constexpr uint32_t kElfShtSymtab = 2;
 constexpr uint32_t kElfShtStrtab = 3;
+constexpr uint32_t kElfShtRela = 4;
+constexpr uint32_t kElfShtRel = 9;
 constexpr uint32_t kElfShtDynsym = 11;
 
 constexpr uint8_t kElfSttNotype = 0;
 constexpr uint8_t kElfSttObject = 1;
 constexpr uint8_t kElfSttFunc = 2;
 constexpr uint8_t kElfSttSection = 3;
+
+constexpr uint32_t kRelaX86_64_64 = 1;
+constexpr uint32_t kRelaX86_64_PC32 = 2;
+constexpr uint32_t kRelaX86_64_32 = 10;
+constexpr uint32_t kRelaX86_64_32S = 11;
+constexpr uint32_t kRelaX86_64_GlobDat = 6;
+constexpr uint32_t kRelaX86_64_JumpSlot = 7;
+constexpr uint32_t kRelaX86_64_Relative = 8;
 
 struct Elf64Header {
   uint8_t ident[16];
@@ -80,6 +91,17 @@ struct Elf64Sym {
   uint64_t size;
 };
 
+struct Elf64Rela {
+  uint64_t offset;
+  uint64_t info;
+  int64_t addend;
+};
+
+struct Elf64Rel {
+  uint64_t offset;
+  uint64_t info;
+};
+
 bool read_exact(std::ifstream& in, void* data, size_t size) {
   in.read(reinterpret_cast<char*>(data), static_cast<std::streamsize>(size));
   return in.good();
@@ -105,6 +127,10 @@ std::string read_string(const std::vector<uint8_t>& table, uint32_t offset) {
 
 uint8_t symbol_type(uint8_t info) { return static_cast<uint8_t>(info & 0x0f); }
 
+uint32_t reloc_type(uint64_t info) { return static_cast<uint32_t>(info & 0xffffffffu); }
+
+uint32_t reloc_sym_index(uint64_t info) { return static_cast<uint32_t>(info >> 32u); }
+
 ghirda::core::SymbolKind to_symbol_kind(uint8_t type) {
   switch (type) {
     case kElfSttFunc:
@@ -115,6 +141,51 @@ ghirda::core::SymbolKind to_symbol_kind(uint8_t type) {
       return ghirda::core::SymbolKind::Label;
     default:
       return ghirda::core::SymbolKind::Unknown;
+  }
+}
+
+bool apply_reloc(uint32_t type, uint64_t address, uint64_t symbol_value, int64_t addend,
+                 uint64_t load_bias, ghirda::core::MemoryImage* image, std::string* note) {
+  if (!image) {
+    if (note) {
+      *note = "no memory image";
+    }
+    return false;
+  }
+
+  const uint64_t place = address + load_bias;
+  switch (type) {
+    case kRelaX86_64_64: {
+      uint64_t value = symbol_value + static_cast<uint64_t>(addend) + load_bias;
+      return image->write_u64(place, value);
+    }
+    case kRelaX86_64_PC32: {
+      uint64_t value = symbol_value + static_cast<uint64_t>(addend) + load_bias;
+      uint64_t result = value - place;
+      return image->write_u32(place, static_cast<uint32_t>(result));
+    }
+    case kRelaX86_64_32: {
+      uint64_t value = symbol_value + static_cast<uint64_t>(addend) + load_bias;
+      return image->write_u32(place, static_cast<uint32_t>(value));
+    }
+    case kRelaX86_64_32S: {
+      int64_t value = static_cast<int64_t>(symbol_value) + addend + static_cast<int64_t>(load_bias);
+      return image->write_u32(place, static_cast<uint32_t>(value));
+    }
+    case kRelaX86_64_GlobDat:
+    case kRelaX86_64_JumpSlot: {
+      uint64_t value = symbol_value + load_bias;
+      return image->write_u64(place, value);
+    }
+    case kRelaX86_64_Relative: {
+      uint64_t value = load_bias + static_cast<uint64_t>(addend);
+      return image->write_u64(place, value);
+    }
+    default:
+      if (note) {
+        *note = "unsupported relocation";
+      }
+      return false;
   }
 }
 
@@ -212,6 +283,19 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
     region.executable = (phdr.flags & 0x1u) != 0;
     program->memory_map().add_region(region);
 
+    std::vector<uint8_t> bytes;
+    if (!read_blob(in, phdr.offset, phdr.filesz, &bytes)) {
+      if (error) {
+        *error = "failed to read segment bytes";
+      }
+      return false;
+    }
+
+    program->memory_image().map_segment(phdr.vaddr, bytes);
+    if (phdr.memsz > phdr.filesz) {
+      program->memory_image().zero_fill(phdr.vaddr + phdr.filesz, phdr.memsz - phdr.filesz);
+    }
+
     min_vaddr = std::min(min_vaddr, phdr.vaddr);
     max_vaddr = std::max(max_vaddr, phdr.vaddr + phdr.memsz);
     found_load = true;
@@ -226,6 +310,12 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
 
   if (min_vaddr < max_vaddr) {
     program->add_address_space(ghirda::core::AddressSpace("ram", min_vaddr, max_vaddr - min_vaddr));
+  }
+
+  if (header.type == kElfTypeShared) {
+    program->set_load_bias(min_vaddr);
+  } else {
+    program->set_load_bias(0);
   }
 
   if (header.shoff == 0 || header.shnum == 0) {
@@ -272,6 +362,9 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
     return false;
   }
 
+  std::vector<std::vector<uint8_t>> string_tables(sections.size());
+  std::vector<std::vector<Elf64Sym>> symbol_tables(sections.size());
+
   for (size_t i = 0; i < sections.size(); ++i) {
     const Elf64Shdr& shdr = sections[i];
     if (shdr.type != kElfShtSymtab && shdr.type != kElfShtDynsym) {
@@ -290,19 +383,42 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
     if (!read_blob(in, sections[shdr.link].offset, sections[shdr.link].size, &strtab)) {
       continue;
     }
+    string_tables[i] = std::move(strtab);
 
     const size_t sym_count = static_cast<size_t>(shdr.size / shdr.entsize);
+    symbol_tables[i].resize(sym_count);
+
     in.seekg(static_cast<std::streamoff>(shdr.offset), std::ios::beg);
     if (!in) {
       continue;
     }
 
     for (size_t idx = 0; idx < sym_count; ++idx) {
-      Elf64Sym sym{};
-      if (!read_exact(in, &sym, sizeof(sym))) {
+      if (!read_exact(in, &symbol_tables[i][idx], sizeof(Elf64Sym))) {
+        symbol_tables[i].resize(idx);
         break;
       }
+    }
+  }
 
+  for (size_t i = 0; i < sections.size(); ++i) {
+    const Elf64Shdr& shdr = sections[i];
+    if (shdr.type != kElfShtSymtab && shdr.type != kElfShtDynsym) {
+      continue;
+    }
+
+    if (shdr.entsize != sizeof(Elf64Sym) || shdr.size == 0) {
+      continue;
+    }
+
+    if (i >= string_tables.size()) {
+      continue;
+    }
+
+    const auto& strtab = string_tables[i];
+    const auto& syms = symbol_tables[i];
+
+    for (const auto& sym : syms) {
       const uint8_t type = symbol_type(sym.info);
       if (type == kElfSttNotype && sym.name == 0) {
         continue;
@@ -326,6 +442,91 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
         type_def.size = static_cast<uint32_t>(sym.size);
         program->types().add_type(type_def);
       }
+    }
+  }
+
+  for (size_t i = 0; i < sections.size(); ++i) {
+    const Elf64Shdr& shdr = sections[i];
+    if (shdr.type != kElfShtRela && shdr.type != kElfShtRel) {
+      continue;
+    }
+
+    if (shdr.entsize == 0 || shdr.size == 0) {
+      continue;
+    }
+
+    if (shdr.link >= sections.size()) {
+      continue;
+    }
+
+    const auto& symtab = symbol_tables[shdr.link];
+    const auto& strtab = string_tables[shdr.link];
+
+    const size_t rel_count = static_cast<size_t>(shdr.size / shdr.entsize);
+    in.seekg(static_cast<std::streamoff>(shdr.offset), std::ios::beg);
+    if (!in) {
+      continue;
+    }
+
+    for (size_t idx = 0; idx < rel_count; ++idx) {
+      ghirda::core::Relocation relocation{};
+      uint32_t type = 0;
+      uint32_t sym_index = 0;
+      int64_t addend = 0;
+
+      if (shdr.type == kElfShtRela) {
+        if (shdr.entsize != sizeof(Elf64Rela)) {
+          break;
+        }
+        Elf64Rela rela{};
+        if (!read_exact(in, &rela, sizeof(rela))) {
+          break;
+        }
+        relocation.address = rela.offset;
+        type = reloc_type(rela.info);
+        sym_index = reloc_sym_index(rela.info);
+        addend = rela.addend;
+      } else {
+        if (shdr.entsize != sizeof(Elf64Rel)) {
+          break;
+        }
+        Elf64Rel rel{};
+        if (!read_exact(in, &rel, sizeof(rel))) {
+          break;
+        }
+        relocation.address = rel.offset;
+        type = reloc_type(rel.info);
+        sym_index = reloc_sym_index(rel.info);
+        uint64_t raw_addend = 0;
+        if (!program->memory_image().read_u64(rel.offset + program->load_bias(), &raw_addend)) {
+          relocation.note = "addend read failed";
+        }
+        addend = static_cast<int64_t>(raw_addend);
+      }
+
+      relocation.type = type;
+      relocation.addend = addend;
+      if (sym_index < symtab.size()) {
+        std::string name = read_string(strtab, symtab[sym_index].name);
+        relocation.symbol = name;
+      }
+
+      uint64_t symbol_value = 0;
+      if (sym_index < symtab.size()) {
+        symbol_value = symtab[sym_index].value;
+      }
+
+      std::string note;
+      bool applied = apply_reloc(type, relocation.address, symbol_value, addend, program->load_bias(),
+                                 &program->memory_image(), &note);
+      relocation.applied = applied;
+      if (!note.empty() && relocation.note.empty()) {
+        relocation.note = note;
+      }
+      if (!applied && relocation.note.empty()) {
+        relocation.note = "relocation not applied";
+      }
+      program->add_relocation(relocation);
     }
   }
 

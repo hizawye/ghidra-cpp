@@ -6,3 +6,5 @@
 - Implemented minimal ELF64 loader (PT_LOAD regions only) and placeholder decoder wiring for headless CLI.
 ## 2026-02-06
 - Added ELF section header and symbol table parsing to populate Program symbols and basic data types.
+## 2026-02-06
+- Added memory image and ELF64 x86_64 relocation parsing + application in loader.

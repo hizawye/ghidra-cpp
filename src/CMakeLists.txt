@@ -1,4 +1,4 @@
-add_library(ghirda_core STATIC core/program.cpp core/address_space.cpp core/memory_map.cpp core/symbol.cpp core/type_system.cpp)
+add_library(ghirda_core STATIC core/program.cpp core/address_space.cpp core/memory_map.cpp core/memory_image.cpp core/symbol.cpp core/type_system.cpp)
 add_library(ghirda_sleigh STATIC sleigh/pcode_ir.cpp sleigh/sleigh_compiler.cpp sleigh/decoder.cpp)
 add_library(ghirda_decompiler STATIC decompiler/decompiler.cpp decompiler/ssa.cpp decompiler/rule_engine.cpp)
 add_library(ghirda_loader STATIC loader/loader.cpp loader/elf_loader.cpp loader/pe_loader.cpp loader/macho_loader.cpp)

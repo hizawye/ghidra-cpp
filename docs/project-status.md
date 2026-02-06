@@ -6,12 +6,13 @@
 - Cloned upstream Ghidra reference source to `ghidra-src/`.
 - Implemented minimal ELF64 loader (headers + PT_LOAD regions).
 - Added ELF section + symbol table parsing to populate Program symbols/types.
+- Added memory image + ELF64 x86_64 relocation parsing and application.
 - Added placeholder SLEIGH decoder and wired to headless CLI.
 
 ## Blockers/Bugs
-- ELF loader does not parse relocations or debug info.
+- ELF loader does not parse debug info.
 - Decoder emits placeholder p-code only.
 - No real decompiler logic yet.
 
 ## Next Immediate Starting Point
-- Implement relocation and debug info parsing (DWARF/PDB as separate milestones).
+- Implement DWARF parsing for types and line info.
