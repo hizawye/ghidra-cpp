@@ -16,3 +16,7 @@
 - ghidra_server
 - sleighc
 - ghidra_export
+
+## Minimal ELF Flow
+- ghidra_headless loads ELF64 (little endian) and populates memory map regions.
+- Decoder emits placeholder p-code for a byte stream.
