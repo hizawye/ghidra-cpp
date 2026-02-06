@@ -9,6 +9,8 @@
 
 #include "ghirda/core/address_space.h"
 #include "ghirda/core/memory_map.h"
+#include "ghirda/core/symbol.h"
+#include "ghirda/core/type_system.h"
 
 namespace ghirda::loader {
 namespace {
@@ -19,6 +21,14 @@ constexpr uint16_t kElfDataLittle = 1;
 constexpr uint32_t kElfTypeExecutable = 2;
 constexpr uint32_t kElfTypeShared = 3;
 constexpr uint32_t kElfPtLoad = 1;
+constexpr uint32_t kElfShtSymtab = 2;
+constexpr uint32_t kElfShtStrtab = 3;
+constexpr uint32_t kElfShtDynsym = 11;
+
+constexpr uint8_t kElfSttNotype = 0;
+constexpr uint8_t kElfSttObject = 1;
+constexpr uint8_t kElfSttFunc = 2;
+constexpr uint8_t kElfSttSection = 3;
 
 struct Elf64Header {
   uint8_t ident[16];
@@ -48,9 +58,64 @@ struct Elf64Phdr {
   uint64_t align;
 };
 
+struct Elf64Shdr {
+  uint32_t name;
+  uint32_t type;
+  uint64_t flags;
+  uint64_t addr;
+  uint64_t offset;
+  uint64_t size;
+  uint32_t link;
+  uint32_t info;
+  uint64_t addralign;
+  uint64_t entsize;
+};
+
+struct Elf64Sym {
+  uint32_t name;
+  uint8_t info;
+  uint8_t other;
+  uint16_t shndx;
+  uint64_t value;
+  uint64_t size;
+};
+
 bool read_exact(std::ifstream& in, void* data, size_t size) {
   in.read(reinterpret_cast<char*>(data), static_cast<std::streamsize>(size));
   return in.good();
+}
+
+bool read_blob(std::ifstream& in, uint64_t offset, uint64_t size, std::vector<uint8_t>* out) {
+  out->assign(static_cast<size_t>(size), 0);
+  in.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+  if (!in) {
+    return false;
+  }
+  in.read(reinterpret_cast<char*>(out->data()), static_cast<std::streamsize>(size));
+  return in.good();
+}
+
+std::string read_string(const std::vector<uint8_t>& table, uint32_t offset) {
+  if (offset >= table.size()) {
+    return {};
+  }
+  const char* start = reinterpret_cast<const char*>(table.data() + offset);
+  return std::string(start);
+}
+
+uint8_t symbol_type(uint8_t info) { return static_cast<uint8_t>(info & 0x0f); }
+
+ghirda::core::SymbolKind to_symbol_kind(uint8_t type) {
+  switch (type) {
+    case kElfSttFunc:
+      return ghirda::core::SymbolKind::Function;
+    case kElfSttObject:
+      return ghirda::core::SymbolKind::Data;
+    case kElfSttSection:
+      return ghirda::core::SymbolKind::Label;
+    default:
+      return ghirda::core::SymbolKind::Unknown;
+  }
 }
 
 } // namespace
@@ -161,6 +226,107 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
 
   if (min_vaddr < max_vaddr) {
     program->add_address_space(ghirda::core::AddressSpace("ram", min_vaddr, max_vaddr - min_vaddr));
+  }
+
+  if (header.shoff == 0 || header.shnum == 0) {
+    return true;
+  }
+
+  if (header.shentsize != sizeof(Elf64Shdr)) {
+    if (error) {
+      *error = "unexpected section header size";
+    }
+    return false;
+  }
+
+  std::vector<Elf64Shdr> sections(header.shnum);
+  in.seekg(static_cast<std::streamoff>(header.shoff), std::ios::beg);
+  if (!in) {
+    if (error) {
+      *error = "failed to seek to section headers";
+    }
+    return false;
+  }
+
+  for (uint16_t i = 0; i < header.shnum; ++i) {
+    if (!read_exact(in, &sections[i], sizeof(Elf64Shdr))) {
+      if (error) {
+        *error = "failed to read section header";
+      }
+      return false;
+    }
+  }
+
+  if (header.shstrndx >= sections.size()) {
+    if (error) {
+      *error = "invalid section string table index";
+    }
+    return false;
+  }
+
+  std::vector<uint8_t> shstrtab;
+  if (!read_blob(in, sections[header.shstrndx].offset, sections[header.shstrndx].size, &shstrtab)) {
+    if (error) {
+      *error = "failed to read section string table";
+    }
+    return false;
+  }
+
+  for (size_t i = 0; i < sections.size(); ++i) {
+    const Elf64Shdr& shdr = sections[i];
+    if (shdr.type != kElfShtSymtab && shdr.type != kElfShtDynsym) {
+      continue;
+    }
+
+    if (shdr.entsize != sizeof(Elf64Sym) || shdr.size == 0) {
+      continue;
+    }
+
+    if (shdr.link >= sections.size() || sections[shdr.link].type != kElfShtStrtab) {
+      continue;
+    }
+
+    std::vector<uint8_t> strtab;
+    if (!read_blob(in, sections[shdr.link].offset, sections[shdr.link].size, &strtab)) {
+      continue;
+    }
+
+    const size_t sym_count = static_cast<size_t>(shdr.size / shdr.entsize);
+    in.seekg(static_cast<std::streamoff>(shdr.offset), std::ios::beg);
+    if (!in) {
+      continue;
+    }
+
+    for (size_t idx = 0; idx < sym_count; ++idx) {
+      Elf64Sym sym{};
+      if (!read_exact(in, &sym, sizeof(sym))) {
+        break;
+      }
+
+      const uint8_t type = symbol_type(sym.info);
+      if (type == kElfSttNotype && sym.name == 0) {
+        continue;
+      }
+
+      std::string name = read_string(strtab, sym.name);
+      if (name.empty()) {
+        continue;
+      }
+
+      ghirda::core::Symbol symbol{};
+      symbol.name = name;
+      symbol.address = sym.value;
+      symbol.kind = to_symbol_kind(type);
+      program->add_symbol(symbol);
+
+      if (symbol.kind == ghirda::core::SymbolKind::Data && sym.size > 0) {
+        ghirda::core::Type type_def{};
+        type_def.kind = ghirda::core::TypeKind::Integer;
+        type_def.name = name + "_t";
+        type_def.size = static_cast<uint32_t>(sym.size);
+        program->types().add_type(type_def);
+      }
+    }
   }
 
   return true;

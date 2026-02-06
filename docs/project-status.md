@@ -5,12 +5,13 @@
 - Added C++20/CMake skeleton with core module stubs and app entrypoints.
 - Cloned upstream Ghidra reference source to `ghidra-src/`.
 - Implemented minimal ELF64 loader (headers + PT_LOAD regions).
+- Added ELF section + symbol table parsing to populate Program symbols/types.
 - Added placeholder SLEIGH decoder and wired to headless CLI.
 
 ## Blockers/Bugs
-- ELF loader does not parse sections, symbols, or relocations.
+- ELF loader does not parse relocations or debug info.
 - Decoder emits placeholder p-code only.
 - No real decompiler logic yet.
 
 ## Next Immediate Starting Point
-- Implement ELF section/symbol parsing and plumb into Program symbols/types.
+- Implement relocation and debug info parsing (DWARF/PDB as separate milestones).

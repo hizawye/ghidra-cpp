@@ -19,4 +19,5 @@
 
 ## Minimal ELF Flow
 - ghidra_headless loads ELF64 (little endian) and populates memory map regions.
+- Loader parses section headers and symbol tables to populate Program symbols/types.
 - Decoder emits placeholder p-code for a byte stream.
