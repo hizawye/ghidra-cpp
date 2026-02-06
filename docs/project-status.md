@@ -12,6 +12,7 @@
 - Added recursive DWARF type resolution and mapped debug types into Program type system.
 - Added struct/union members to Program type system from DWARF.
 - Added DWARF bitfield/alignment metadata for struct/union members.
+- Added ELF section/segment tables to Program and loader.
 - Added placeholder SLEIGH decoder and wired to headless CLI.
 
 ## Blockers/Bugs
@@ -20,4 +21,4 @@
 - No real decompiler logic yet.
 
 ## Next Immediate Starting Point
-- Expand DWARF member layout handling (location expressions) and feed decompiler.
+- Implement PE loader (sections, imports/exports, relocations) and Mach-O loader.

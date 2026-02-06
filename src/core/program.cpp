@@ -30,4 +30,10 @@ uint64_t Program::load_bias() const { return load_bias_; }
 DebugInfo& Program::debug_info() { return debug_info_; }
 const DebugInfo& Program::debug_info() const { return debug_info_; }
 
+void Program::add_section(const Section& section) { sections_.push_back(section); }
+const std::vector<Program::Section>& Program::sections() const { return sections_; }
+
+void Program::add_segment(const Segment& segment) { segments_.push_back(segment); }
+const std::vector<Program::Segment>& Program::segments() const { return segments_; }
+
 } // namespace ghirda::core

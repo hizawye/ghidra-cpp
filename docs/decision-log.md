@@ -20,3 +20,5 @@
 - Added struct/union member support in Program type system and DWARF mapping.
 ## 2026-02-06
 - Added DWARF bitfield/alignment metadata for struct/union members.
+## 2026-02-06
+- Added section/segment tables to Program and populated them in ELF loader.

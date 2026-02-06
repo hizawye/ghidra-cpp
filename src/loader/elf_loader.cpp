@@ -287,6 +287,13 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
     region.executable = (phdr.flags & 0x1u) != 0;
     program->memory_map().add_region(region);
 
+    ghirda::core::Program::Segment seg{};
+    seg.vaddr = phdr.vaddr;
+    seg.memsz = phdr.memsz;
+    seg.filesz = phdr.filesz;
+    seg.flags = phdr.flags;
+    program->add_segment(seg);
+
     std::vector<uint8_t> bytes;
     if (!read_blob(in, phdr.offset, phdr.filesz, &bytes)) {
       if (error) {
@@ -371,6 +378,15 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
 
   for (size_t i = 0; i < sections.size(); ++i) {
     const Elf64Shdr& shdr = sections[i];
+    ghirda::core::Program::Section sec{};
+    sec.name = read_string(shstrtab, shdr.name);
+    sec.address = shdr.addr;
+    sec.size = shdr.size;
+    sec.file_offset = shdr.offset;
+    sec.flags = shdr.flags;
+    if (!sec.name.empty()) {
+      program->add_section(sec);
+    }
     if (shdr.type != kElfShtSymtab && shdr.type != kElfShtDynsym) {
       continue;
     }
