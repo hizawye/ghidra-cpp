@@ -21,6 +21,9 @@ struct TypeMember {
   std::string type_name;
   uint32_t offset = 0;
   uint32_t size = 0;
+  uint32_t bit_size = 0;
+  int32_t bit_offset = -1;
+  uint32_t alignment = 0;
 };
 
 struct Type {

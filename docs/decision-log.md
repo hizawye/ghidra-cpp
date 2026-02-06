@@ -18,3 +18,5 @@
 - Added recursive DWARF type resolution for pointers/arrays/typedef/const/volatile.
 ## 2026-02-06
 - Added struct/union member support in Program type system and DWARF mapping.
+## 2026-02-06
+- Added DWARF bitfield/alignment metadata for struct/union members.

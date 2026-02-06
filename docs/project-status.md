@@ -11,12 +11,13 @@
 - Expanded DWARF parsing with more tags/forms (ref, block, const/volatile/enum types).
 - Added recursive DWARF type resolution and mapped debug types into Program type system.
 - Added struct/union members to Program type system from DWARF.
+- Added DWARF bitfield/alignment metadata for struct/union members.
 - Added placeholder SLEIGH decoder and wired to headless CLI.
 
 ## Blockers/Bugs
-- DWARF parser is still partial and does not model full layouts (bitfields, alignments).
+- DWARF parser is still partial and does not handle all alignment/bitfield edge cases.
 - Decoder emits placeholder p-code only.
 - No real decompiler logic yet.
 
 ## Next Immediate Starting Point
-- Improve struct/union member parsing (bitfields, alignment) and link to decompiler.
+- Expand DWARF member layout handling (location expressions) and feed decompiler.

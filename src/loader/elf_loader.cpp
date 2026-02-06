@@ -749,6 +749,12 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
           tm.type_name = resolved.first.empty() ? "void" : resolved.first;
           tm.size = resolved.second;
           tm.offset = static_cast<uint32_t>(member.offset);
+          tm.bit_size = member.bit_size;
+          tm.bit_offset = member.bit_offset;
+          tm.alignment = member.alignment;
+          if (tm.size == 0 && tm.bit_size != 0) {
+            tm.size = static_cast<uint32_t>((tm.bit_size + 7) / 8);
+          }
           type_def.members.push_back(tm);
         }
       }

@@ -30,6 +30,10 @@ constexpr uint32_t kDwarfAtDataMemberLocation = 0x38;
 constexpr uint32_t kDwarfAtUpperBound = 0x2f;
 constexpr uint32_t kDwarfAtLowerBound = 0x22;
 constexpr uint32_t kDwarfAtCount = 0x37;
+constexpr uint32_t kDwarfAtBitSize = 0x0d;
+constexpr uint32_t kDwarfAtBitOffset = 0x0c;
+constexpr uint32_t kDwarfAtDataBitOffset = 0x6b;
+constexpr uint32_t kDwarfAtAlignment = 0x88;
 
 constexpr uint32_t kDwarfFormAddr = 0x01;
 constexpr uint32_t kDwarfFormData1 = 0x0b;
@@ -618,6 +622,10 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
     uint64_t upper_bound = 0;
     uint64_t lower_bound = 0;
     uint64_t count = 0;
+    uint64_t bit_size = 0;
+    int64_t bit_offset = -1;
+    int64_t data_bit_offset = -1;
+    uint64_t alignment = 0;
     std::string name;
     uint32_t high_pc_form = 0;
 
@@ -661,6 +669,18 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
         case kDwarfAtCount:
           count = uvalue;
           break;
+        case kDwarfAtBitSize:
+          bit_size = uvalue;
+          break;
+        case kDwarfAtBitOffset:
+          bit_offset = static_cast<int64_t>(uvalue);
+          break;
+        case kDwarfAtDataBitOffset:
+          data_bit_offset = static_cast<int64_t>(uvalue);
+          break;
+        case kDwarfAtAlignment:
+          alignment = uvalue;
+          break;
         default:
           break;
       }
@@ -689,6 +709,9 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
         member.name = name;
         member.type_ref = type_ref;
         member.offset = member_location;
+        member.bit_size = static_cast<uint32_t>(bit_size);
+        member.bit_offset = static_cast<int32_t>(data_bit_offset >= 0 ? data_bit_offset : bit_offset);
+        member.alignment = static_cast<uint32_t>(alignment);
         out->types[static_cast<size_t>(type_stack.back())].members.push_back(member);
       }
     }
