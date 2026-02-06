@@ -9,12 +9,13 @@
 - Added memory image + ELF64 x86_64 relocation parsing and application.
 - Added DWARF v4+ parsing for types, functions, and line info (basic forms).
 - Expanded DWARF parsing with more tags/forms (ref, block, const/volatile/enum types).
+- Mapped DebugInfo types into Program type system (basic resolution).
 - Added placeholder SLEIGH decoder and wired to headless CLI.
 
 ## Blockers/Bugs
-- DWARF parser is still partial and does not resolve type references.
+- DWARF parser is still partial and does not resolve all type relationships.
 - Decoder emits placeholder p-code only.
 - No real decompiler logic yet.
 
 ## Next Immediate Starting Point
-- Resolve DWARF type references and map DebugInfo types into Program type system.
+- Improve DWARF type resolution and propagate function signatures into decompiler.

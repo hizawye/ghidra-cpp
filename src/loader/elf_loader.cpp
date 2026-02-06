@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "ghirda/core/address_space.h"
@@ -562,6 +563,105 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
       if (error && error->empty()) {
         *error = "DWARF parse failed: " + dwarf_error;
       }
+    }
+  }
+
+  if (!program->debug_info().types.empty()) {
+    std::unordered_map<uint64_t, const ghirda::core::DebugType*> type_map;
+    for (const auto& dt : program->debug_info().types) {
+      if (dt.die_offset != 0) {
+        type_map[dt.die_offset] = &dt;
+      }
+    }
+
+    auto resolve_name = [&type_map](uint64_t ref, const std::string& fallback) -> std::string {
+      auto it = type_map.find(ref);
+      if (it == type_map.end()) {
+        return fallback;
+      }
+      if (!it->second->name.empty()) {
+        return it->second->name;
+      }
+      return fallback;
+    };
+
+    for (const auto& dt : program->debug_info().types) {
+      ghirda::core::Type type_def{};
+      std::string name = dt.name;
+      uint32_t size = dt.size;
+
+      switch (dt.kind) {
+        case ghirda::core::DebugTypeKind::Base:
+          type_def.kind = ghirda::core::TypeKind::Integer;
+          break;
+        case ghirda::core::DebugTypeKind::Pointer: {
+          type_def.kind = ghirda::core::TypeKind::Pointer;
+          std::string target = resolve_name(dt.type_ref, "void");
+          name = target + "*";
+          if (size == 0) {
+            size = 8;
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Struct:
+        case ghirda::core::DebugTypeKind::Union:
+          type_def.kind = ghirda::core::TypeKind::Struct;
+          break;
+        case ghirda::core::DebugTypeKind::Array:
+          type_def.kind = ghirda::core::TypeKind::Array;
+          break;
+        case ghirda::core::DebugTypeKind::Typedef: {
+          std::string target = resolve_name(dt.type_ref, "");
+          if (!target.empty()) {
+            name = dt.name.empty() ? target : dt.name;
+          }
+          type_def.kind = ghirda::core::TypeKind::Integer;
+          if (size == 0 && dt.type_ref != 0) {
+            auto it = type_map.find(dt.type_ref);
+            if (it != type_map.end()) {
+              size = it->second->size;
+            }
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Const:
+        case ghirda::core::DebugTypeKind::Volatile: {
+          std::string target = resolve_name(dt.type_ref, "");
+          if (!target.empty()) {
+            name = (dt.kind == ghirda::core::DebugTypeKind::Const ? "const " : "volatile ") + target;
+          }
+          type_def.kind = ghirda::core::TypeKind::Integer;
+          if (size == 0 && dt.type_ref != 0) {
+            auto it = type_map.find(dt.type_ref);
+            if (it != type_map.end()) {
+              size = it->second->size;
+            }
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Enumeration:
+          type_def.kind = ghirda::core::TypeKind::Integer;
+          break;
+        case ghirda::core::DebugTypeKind::Subroutine:
+          type_def.kind = ghirda::core::TypeKind::Pointer;
+          if (size == 0) {
+            size = 8;
+          }
+          if (name.empty()) {
+            name = "fn";
+          }
+          break;
+        default:
+          type_def.kind = ghirda::core::TypeKind::Void;
+          break;
+      }
+
+      if (name.empty()) {
+        continue;
+      }
+      type_def.name = name;
+      type_def.size = size;
+      program->types().add_type(type_def);
     }
   }
 

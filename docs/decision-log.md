@@ -12,3 +12,5 @@
 - Added DebugInfo structure and minimal DWARF v4+ parsing for types, functions, and line info.
 ## 2026-02-06
 - Expanded DWARF v4+ parsing with additional tags/forms and basic type references.
+## 2026-02-06
+- Added basic DWARF type reference resolution and mapped debug types into Program type system.
