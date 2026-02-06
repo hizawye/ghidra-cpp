@@ -56,6 +56,7 @@ struct DebugInfo {
   std::vector<DebugFunction> functions;
   std::vector<DebugLineEntry> lines;
   std::vector<DebugType> types;
+  std::string pdb_path;
 };
 
 } // namespace ghirda::core

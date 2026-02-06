@@ -13,12 +13,14 @@
 - Added struct/union members to Program type system from DWARF.
 - Added DWARF bitfield/alignment metadata for struct/union members.
 - Added ELF section/segment tables to Program and loader.
+- Implemented PE loader (sections, imports/exports, base relocs, PDB path).
 - Added placeholder SLEIGH decoder and wired to headless CLI.
 
 ## Blockers/Bugs
+- Mach-O loader still missing.
 - DWARF parser is still partial and does not handle all alignment/bitfield edge cases.
 - Decoder emits placeholder p-code only.
 - No real decompiler logic yet.
 
 ## Next Immediate Starting Point
-- Implement PE loader (sections, imports/exports, relocations) and Mach-O loader.
+- Implement Mach-O loader (segments, symbols, relocations).
