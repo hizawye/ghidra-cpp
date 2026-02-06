@@ -27,4 +27,7 @@ const std::vector<Relocation>& Program::relocations() const { return relocations
 void Program::set_load_bias(uint64_t bias) { load_bias_ = bias; }
 uint64_t Program::load_bias() const { return load_bias_; }
 
+DebugInfo& Program::debug_info() { return debug_info_; }
+const DebugInfo& Program::debug_info() const { return debug_info_; }
+
 } // namespace ghirda::core

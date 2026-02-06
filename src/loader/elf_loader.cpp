@@ -12,6 +12,7 @@
 #include "ghirda/core/relocation.h"
 #include "ghirda/core/symbol.h"
 #include "ghirda/core/type_system.h"
+#include "ghirda/loader/dwarf_reader.h"
 
 namespace ghirda::loader {
 namespace {
@@ -527,6 +528,40 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
         relocation.note = "relocation not applied";
       }
       program->add_relocation(relocation);
+    }
+  }
+
+  DwarfSections dwarf_sections{};
+  std::vector<uint8_t> debug_info;
+  std::vector<uint8_t> debug_abbrev;
+  std::vector<uint8_t> debug_line;
+  std::vector<uint8_t> debug_str;
+
+  for (size_t i = 0; i < sections.size(); ++i) {
+    const Elf64Shdr& shdr = sections[i];
+    std::string name = read_string(shstrtab, shdr.name);
+    if (name == ".debug_info") {
+      read_blob(in, shdr.offset, shdr.size, &debug_info);
+      dwarf_sections.debug_info.data = &debug_info;
+    } else if (name == ".debug_abbrev") {
+      read_blob(in, shdr.offset, shdr.size, &debug_abbrev);
+      dwarf_sections.debug_abbrev.data = &debug_abbrev;
+    } else if (name == ".debug_line") {
+      read_blob(in, shdr.offset, shdr.size, &debug_line);
+      dwarf_sections.debug_line.data = &debug_line;
+    } else if (name == ".debug_str") {
+      read_blob(in, shdr.offset, shdr.size, &debug_str);
+      dwarf_sections.debug_str.data = &debug_str;
+    }
+  }
+
+  if (dwarf_sections.debug_info.data && dwarf_sections.debug_abbrev.data) {
+    DwarfReader reader(dwarf_sections);
+    std::string dwarf_error;
+    if (!reader.parse(&program->debug_info(), &dwarf_error)) {
+      if (error && error->empty()) {
+        *error = "DWARF parse failed: " + dwarf_error;
+      }
     }
   }
 

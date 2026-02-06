@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "ghirda/core/address_space.h"
+#include "ghirda/core/debug_info.h"
 #include "ghirda/core/memory_map.h"
 #include "ghirda/core/relocation.h"
 #include "ghirda/core/memory_image.h"
@@ -37,6 +38,9 @@ public:
   void set_load_bias(uint64_t bias);
   uint64_t load_bias() const;
 
+  DebugInfo& debug_info();
+  const DebugInfo& debug_info() const;
+
 private:
   std::string name_;
   MemoryMap memory_map_{};
@@ -46,6 +50,7 @@ private:
   TypeSystem types_{};
   std::vector<Relocation> relocations_{};
   uint64_t load_bias_ = 0;
+  DebugInfo debug_info_{};
 };
 
 } // namespace ghirda::core

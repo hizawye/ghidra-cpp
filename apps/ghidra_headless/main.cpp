@@ -21,6 +21,8 @@ int main(int argc, char** argv) {
   std::cout << "loaded program with " << program.memory_map().regions().size() << " region(s)" << std::endl;
   std::cout << "image segments: " << program.memory_image().segments().size() << std::endl;
   std::cout << "relocations: " << program.relocations().size() << std::endl;
+  std::cout << "debug functions: " << program.debug_info().functions.size() << std::endl;
+  std::cout << "debug lines: " << program.debug_info().lines.size() << std::endl;
 
   ghirda::sleigh::Decoder decoder;
   std::vector<uint8_t> bytes{0x90};

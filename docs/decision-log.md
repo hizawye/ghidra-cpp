@@ -8,3 +8,5 @@
 - Added ELF section header and symbol table parsing to populate Program symbols and basic data types.
 ## 2026-02-06
 - Added memory image and ELF64 x86_64 relocation parsing + application in loader.
+## 2026-02-06
+- Added DebugInfo structure and minimal DWARF v4+ parsing for types, functions, and line info.
