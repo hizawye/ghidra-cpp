@@ -4,8 +4,10 @@
 #include <array>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "ghirda/core/address_space.h"
@@ -574,21 +576,128 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
       }
     }
 
-    auto resolve_name = [&type_map](uint64_t ref, const std::string& fallback) -> std::string {
-      auto it = type_map.find(ref);
-      if (it == type_map.end()) {
-        return fallback;
+    std::unordered_set<uint64_t> emitting;
+
+    std::function<std::pair<std::string, uint32_t>(const ghirda::core::DebugType*)> resolve_type =
+        [&](const ghirda::core::DebugType* dt) -> std::pair<std::string, uint32_t> {
+      if (!dt) {
+        return {"", 0};
       }
-      if (!it->second->name.empty()) {
-        return it->second->name;
+      if (dt->die_offset != 0) {
+        if (emitting.count(dt->die_offset) != 0) {
+          return {dt->name, dt->size};
+        }
+        emitting.insert(dt->die_offset);
       }
-      return fallback;
+
+      std::string name = dt->name;
+      uint32_t size = dt->size;
+
+      auto resolve_ref = [&](uint64_t ref) -> std::pair<std::string, uint32_t> {
+        auto it = type_map.find(ref);
+        if (it == type_map.end()) {
+          return {"", 0};
+        }
+        return resolve_type(it->second);
+      };
+
+      switch (dt->kind) {
+        case ghirda::core::DebugTypeKind::Pointer: {
+          auto target = resolve_ref(dt->type_ref);
+          std::string base = target.first.empty() ? "void" : target.first;
+          name = base + "*";
+          if (size == 0) {
+            size = 8;
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Const: {
+          auto target = resolve_ref(dt->type_ref);
+          if (!target.first.empty()) {
+            name = "const " + target.first;
+          }
+          if (size == 0) {
+            size = target.second;
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Volatile: {
+          auto target = resolve_ref(dt->type_ref);
+          if (!target.first.empty()) {
+            name = "volatile " + target.first;
+          }
+          if (size == 0) {
+            size = target.second;
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Typedef: {
+          auto target = resolve_ref(dt->type_ref);
+          if (name.empty() && !target.first.empty()) {
+            name = target.first;
+          }
+          if (size == 0) {
+            size = target.second;
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Array: {
+          auto target = resolve_ref(dt->type_ref);
+          std::string base = target.first.empty() ? "void" : target.first;
+          if (dt->array_count != 0) {
+            name = base + "[" + std::to_string(dt->array_count) + "]";
+          } else {
+            name = base + "[]";
+          }
+          if (size == 0 && target.second != 0 && dt->array_count != 0) {
+            size = static_cast<uint32_t>(target.second * dt->array_count);
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Union:
+        case ghirda::core::DebugTypeKind::Struct: {
+          if (name.empty() && dt->die_offset != 0) {
+            name = (dt->kind == ghirda::core::DebugTypeKind::Union ? "union_" : "struct_") +
+                   std::to_string(dt->die_offset);
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Enumeration: {
+          if (name.empty() && dt->die_offset != 0) {
+            name = "enum_" + std::to_string(dt->die_offset);
+          }
+          break;
+        }
+        case ghirda::core::DebugTypeKind::Subroutine: {
+          name = name.empty() ? "fn" : name;
+          if (size == 0) {
+            size = 8;
+          }
+          break;
+        }
+        default:
+          break;
+      }
+
+      if (dt->die_offset != 0) {
+        emitting.erase(dt->die_offset);
+      }
+
+      return {name, size};
     };
 
+    std::unordered_set<uint64_t> emitted;
     for (const auto& dt : program->debug_info().types) {
+      if (dt.die_offset == 0 || emitted.count(dt.die_offset) != 0) {
+        continue;
+      }
+      auto resolved = resolve_type(&dt);
+      if (resolved.first.empty()) {
+        continue;
+      }
       ghirda::core::Type type_def{};
-      std::string name = dt.name;
-      uint32_t size = dt.size;
+      std::string name = resolved.first;
+      uint32_t size = resolved.second;
 
       switch (dt.kind) {
         case ghirda::core::DebugTypeKind::Base:
@@ -596,11 +705,6 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
           break;
         case ghirda::core::DebugTypeKind::Pointer: {
           type_def.kind = ghirda::core::TypeKind::Pointer;
-          std::string target = resolve_name(dt.type_ref, "void");
-          name = target + "*";
-          if (size == 0) {
-            size = 8;
-          }
           break;
         }
         case ghirda::core::DebugTypeKind::Struct:
@@ -611,32 +715,12 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
           type_def.kind = ghirda::core::TypeKind::Array;
           break;
         case ghirda::core::DebugTypeKind::Typedef: {
-          std::string target = resolve_name(dt.type_ref, "");
-          if (!target.empty()) {
-            name = dt.name.empty() ? target : dt.name;
-          }
           type_def.kind = ghirda::core::TypeKind::Integer;
-          if (size == 0 && dt.type_ref != 0) {
-            auto it = type_map.find(dt.type_ref);
-            if (it != type_map.end()) {
-              size = it->second->size;
-            }
-          }
           break;
         }
         case ghirda::core::DebugTypeKind::Const:
         case ghirda::core::DebugTypeKind::Volatile: {
-          std::string target = resolve_name(dt.type_ref, "");
-          if (!target.empty()) {
-            name = (dt.kind == ghirda::core::DebugTypeKind::Const ? "const " : "volatile ") + target;
-          }
           type_def.kind = ghirda::core::TypeKind::Integer;
-          if (size == 0 && dt.type_ref != 0) {
-            auto it = type_map.find(dt.type_ref);
-            if (it != type_map.end()) {
-              size = it->second->size;
-            }
-          }
           break;
         }
         case ghirda::core::DebugTypeKind::Enumeration:
@@ -644,24 +728,17 @@ bool ElfLoader::load(const std::string& path, ghirda::core::Program* program, st
           break;
         case ghirda::core::DebugTypeKind::Subroutine:
           type_def.kind = ghirda::core::TypeKind::Pointer;
-          if (size == 0) {
-            size = 8;
-          }
-          if (name.empty()) {
-            name = "fn";
-          }
           break;
         default:
           type_def.kind = ghirda::core::TypeKind::Void;
           break;
       }
 
-      if (name.empty()) {
-        continue;
-      }
+      if (name.empty()) { continue; }
       type_def.name = name;
       type_def.size = size;
       program->types().add_type(type_def);
+      emitted.insert(dt.die_offset);
     }
   }
 

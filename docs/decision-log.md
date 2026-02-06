@@ -14,3 +14,5 @@
 - Expanded DWARF v4+ parsing with additional tags/forms and basic type references.
 ## 2026-02-06
 - Added basic DWARF type reference resolution and mapped debug types into Program type system.
+## 2026-02-06
+- Added recursive DWARF type resolution for pointers/arrays/typedef/const/volatile.

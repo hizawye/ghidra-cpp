@@ -19,6 +19,12 @@ struct DebugFunction {
   uint64_t return_type_ref = 0;
 };
 
+struct DebugMember {
+  std::string name;
+  uint64_t type_ref = 0;
+  uint64_t offset = 0;
+};
+
 enum class DebugTypeKind {
   Base,
   Pointer,
@@ -39,6 +45,8 @@ struct DebugType {
   uint32_t size = 0;
   uint64_t die_offset = 0;
   uint64_t type_ref = 0;
+  uint64_t array_count = 0;
+  std::vector<DebugMember> members;
 };
 
 struct DebugInfo {

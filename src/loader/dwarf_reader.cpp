@@ -17,6 +17,8 @@ constexpr uint32_t kDwarfTagConstType = 0x26;
 constexpr uint32_t kDwarfTagVolatileType = 0x35;
 constexpr uint32_t kDwarfTagEnumerationType = 0x04;
 constexpr uint32_t kDwarfTagSubroutineType = 0x15;
+constexpr uint32_t kDwarfTagMember = 0x0d;
+constexpr uint32_t kDwarfTagSubrangeType = 0x21;
 
 constexpr uint32_t kDwarfAtName = 0x03;
 constexpr uint32_t kDwarfAtLowPc = 0x11;
@@ -24,6 +26,10 @@ constexpr uint32_t kDwarfAtHighPc = 0x12;
 constexpr uint32_t kDwarfAtByteSize = 0x0b;
 constexpr uint32_t kDwarfAtStmtList = 0x10;
 constexpr uint32_t kDwarfAtType = 0x49;
+constexpr uint32_t kDwarfAtDataMemberLocation = 0x38;
+constexpr uint32_t kDwarfAtUpperBound = 0x2f;
+constexpr uint32_t kDwarfAtLowerBound = 0x22;
+constexpr uint32_t kDwarfAtCount = 0x37;
 
 constexpr uint32_t kDwarfFormAddr = 0x01;
 constexpr uint32_t kDwarfFormData1 = 0x0b;
@@ -575,6 +581,7 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
                                  uint8_t address_size, uint64_t unit_offset, ghirda::core::DebugInfo* out,
                                  std::string* error) {
   std::vector<bool> has_children_stack;
+  std::vector<int> type_stack;
 
   while (cursor.offset < cursor.data->size()) {
     uint64_t code = 0;
@@ -586,6 +593,9 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
         return true;
       }
       has_children_stack.pop_back();
+      if (!type_stack.empty()) {
+        type_stack.pop_back();
+      }
       continue;
     }
 
@@ -604,6 +614,10 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
     uint64_t stmt_list = 0;
     uint64_t byte_size = 0;
     uint64_t type_ref = 0;
+    uint64_t member_location = 0;
+    uint64_t upper_bound = 0;
+    uint64_t lower_bound = 0;
+    uint64_t count = 0;
     std::string name;
     uint32_t high_pc_form = 0;
 
@@ -635,6 +649,18 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
         case kDwarfAtType:
           type_ref = uvalue;
           break;
+        case kDwarfAtDataMemberLocation:
+          member_location = uvalue;
+          break;
+        case kDwarfAtUpperBound:
+          upper_bound = uvalue;
+          break;
+        case kDwarfAtLowerBound:
+          lower_bound = uvalue;
+          break;
+        case kDwarfAtCount:
+          count = uvalue;
+          break;
         default:
           break;
       }
@@ -657,6 +683,32 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
       out->functions.push_back(func);
     }
 
+    if (entry.tag == kDwarfTagMember) {
+      if (!type_stack.empty() && type_stack.back() >= 0) {
+        ghirda::core::DebugMember member{};
+        member.name = name;
+        member.type_ref = type_ref;
+        member.offset = member_location;
+        out->types[static_cast<size_t>(type_stack.back())].members.push_back(member);
+      }
+    }
+
+    if (entry.tag == kDwarfTagSubrangeType) {
+      if (!type_stack.empty() && type_stack.back() >= 0) {
+        auto& parent = out->types[static_cast<size_t>(type_stack.back())];
+        if (parent.kind == ghirda::core::DebugTypeKind::Array) {
+          uint64_t range_count = count;
+          if (range_count == 0 && upper_bound >= lower_bound) {
+            range_count = upper_bound - lower_bound + 1;
+          }
+          if (range_count != 0) {
+            parent.array_count = range_count;
+          }
+        }
+      }
+    }
+
+    bool pushed_type = false;
     if (entry.tag == kDwarfTagBaseType || entry.tag == kDwarfTagPointerType ||
         entry.tag == kDwarfTagStructureType || entry.tag == kDwarfTagArrayType ||
         entry.tag == kDwarfTagTypedef || entry.tag == kDwarfTagUnionType ||
@@ -704,11 +756,18 @@ bool DwarfReader::parse_die_tree(Cursor& cursor, const std::unordered_map<uint32
       }
       if (!type.name.empty()) {
         out->types.push_back(type);
+        if (entry.has_children) {
+          type_stack.push_back(static_cast<int>(out->types.size() - 1));
+          pushed_type = true;
+        }
       }
     }
 
     if (entry.has_children) {
       has_children_stack.push_back(true);
+      if (!pushed_type) {
+        type_stack.push_back(-1);
+      }
     }
   }
 
