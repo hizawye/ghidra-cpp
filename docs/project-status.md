@@ -3,7 +3,7 @@
 ## Current Progress
 - Bootstrapped repo and docs per AGENTS instructions.
 - Added C++20/CMake skeleton with core module stubs and app entrypoints.
-- Cloned upstream Ghidra reference source to `ghidra-src/`.
+- Added upstream Ghidra as a git submodule at `ghidra-src/`.
 - Implemented minimal ELF64 loader (headers + PT_LOAD regions).
 - Added ELF section + symbol table parsing to populate Program symbols/types.
 - Added memory image + ELF64 x86_64 relocation parsing and application.
@@ -16,6 +16,7 @@
 - Implemented PE loader (sections, imports/exports, base relocs, PDB path).
 - Implemented Mach-O loader (segments/sections, symbols, basic relocs).
 - Added placeholder SLEIGH decoder and wired to headless CLI.
+- Added `origin` remote, renamed branch to `main`, and pushed to GitHub.
 
 ## Blockers/Bugs
 - Mach-O loader does not handle fat/universal binaries or bindings.
